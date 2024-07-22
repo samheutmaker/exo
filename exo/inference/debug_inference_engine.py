@@ -1,15 +1,15 @@
 from exo.inference.mlx.sharded_inference_engine import MLXDynamicShardInferenceEngine
 from exo.inference.inference_engine import InferenceEngine
 from exo.inference.shard import Shard
-from exo.inference.tinygrad.inference import TinygradDynamicShardInferenceEngine
 import asyncio
+from exo.inference.mlx.sharded_utils import load_shard, get_model_path
 import numpy as np
+from mlx_lm.tokenizer_utils import load_tokenizer
 
 # An inference engine should work the same for any number of Shards, as long as the Shards are continuous.
 async def test_inference_engine(inference_engine_1: InferenceEngine, inference_engine_2: InferenceEngine, model_id: str):
-    from exo.inference.tinygrad.inference import Tokenizer
-    from pathlib import Path
-    _tokenizer = Tokenizer(str(Path(model_id) / "tokenizer.model"))
+    model_path = await get_model_path(model_id)
+    _tokenizer = load_tokenizer(model_path)
 
     prompt = "In a single word only, what is the last name of the president of the United States? "
     resp_full, inference_state_full, _ = await inference_engine_1.infer_prompt(shard=Shard(model_id=model_id, start_layer=0, end_layer=31, n_layers=32), prompt=prompt)
@@ -36,8 +36,25 @@ async def test_inference_engine(inference_engine_1: InferenceEngine, inference_e
     assert np.array_equal(next_resp_full, resp4)
 
 
-asyncio.run(test_inference_engine(
-    TinygradDynamicShardInferenceEngine(),
-    TinygradDynamicShardInferenceEngine(),
-    "llama3-8b-sfr",
-))
+asyncio.run(
+    test_inference_engine(
+        MLXDynamicShardInferenceEngine(),
+        MLXDynamicShardInferenceEngine(),
+        "mlx-community/Meta-Llama-3-8B-Instruct-4bit",
+    )
+)
+
+
+# async def load_test():
+#     shard = Shard(
+#         model_id="mlx-community/Meta-Llama-3-8B-Instruct-4bit",
+#         start_layer=0,
+#         end_layer=31,
+#         n_layers=32,
+#     )
+
+#     model, tokenizer = await load_shard(shard.model_id, shard)
+#     print(f"Loaded {model}")
+#     print(f"Loaded {tokenizer=}")
+
+# asyncio.run(load_test())

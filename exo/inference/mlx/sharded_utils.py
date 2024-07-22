@@ -169,8 +169,11 @@ async def get_model_path(path_or_hf_repo: str, revision: Optional[str] = None) -
     Returns:
         Path: The path to the model.
     """
-    model_path = Path(path_or_hf_repo)
+    model_path = Path(
+        "/Users/samheutmaker/.cache/huggingface/hub/models--mlx-community--Meta-Llama-3-8B-Instruct-4bit/snapshots/c38b3b1f03cce0ce0ccd235e5c97b0d3d255e651"
+    )
     if not model_path.exists():
+        print(f"Model path {model_path} does not exist")
         try:
             model_path = Path(
                 await snapshot_download_async(
@@ -194,6 +197,7 @@ async def get_model_path(path_or_hf_repo: str, revision: Optional[str] = None) -
                 " gated Hugging Face repo, make sure you are authenticated:\n"
                 "https://huggingface.co/docs/huggingface_hub/en/guides/cli#huggingface-cli-login"
             ) from None
+    print(f"Model path {model_path} exists")
     return model_path
 
 
