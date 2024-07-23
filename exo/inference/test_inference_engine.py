@@ -1,18 +1,23 @@
 import asyncio
 from dataclasses import dataclass
-from typing import  List
+from typing import List, Optional
+import numpy as np
 
 from transformers import AutoTokenizer
+from nats import connect
+from nats.aio.client import Client as NATS
 
 from exo.inference.inference_engine import InferenceEngine
 from exo.inference.mlx.sharded_inference_engine import MLXDynamicShardInferenceEngine
 from exo.inference.mlx.sharded_utils import get_model_path
 from exo.inference.shard import Shard
 
+
 class Message:
     def __init__(self, role: str, content: str):
         self.role = role
         self.content = content
+
 
 def build_prompt(tokenizer, messages: List[Message]):
     return tokenizer.apply_chat_template(
@@ -21,66 +26,134 @@ def build_prompt(tokenizer, messages: List[Message]):
 
 
 @dataclass
+class ForwardPassResult:
+    output_data: np.ndarray
+    inference_state_full: str
+    is_finished: bool
+
+
+@dataclass
 class Node:
-    shard: Shard
+    model_id: str
+    start_layer: int
+    end_layer: int
+    n_layers: int
     inference_engine: InferenceEngine
+    nc: NATS
+    shard: Shard = None
+
+    topic: str = None
+    next_topic: str = None
+
+    def __post_init__(self):
+        if self.shard is None:
+            self.shard = Shard(
+                self.model_id, self.start_layer, self.end_layer, self.n_layers
+            )
+
+        self.topic = f"shard_{self.start_layer}"
+        self.next_topic = f"shard_{self.end_layer + 1}"
+
+        # Subscribe to the "topic" event on NATS
+        asyncio.create_task(self.subscribe_to_topic())
+
+    async def subscribe_to_topic(self):
+        await self.nc.subscribe(self.topic, cb=self.handle_topic_message)
+
+    async def handle_topic_message(self, msg):
+        print(msg.data)
+        pass
+
+    async def process_prompt(self, prompt: str):
+        (
+            output_data,
+            inference_state_full,
+            is_finished,
+        ) = await self.inference_engine.infer_prompt(
+            shard=self.shard,
+            prompt=prompt,
+        )
+
+        return (
+            output_data,
+            inference_state_full,
+            is_finished,
+        )
+
+        # await self.nc.publish(
+        #     self.next_topic,
+        #     ForwardPassResult(output_data, inference_state_full, is_finished),
+        # )
+
+    async def process_tensor(self, input_data: np.ndarray, inference_state: str):
+        (
+            output_data,
+            inference_state_full,
+            is_finished,
+        ) = await self.inference_engine.infer_tensor(
+            shard=self.shard,
+            input_data=input_data,
+            inference_state=inference_state,
+        )
+
+        return (
+            output_data,
+            inference_state_full,
+            is_finished,
+        )
 
 
-nodes = [
-    Node(
-        shard=Shard(
-            model_id="mlx-community/Meta-Llama-3-8B-Instruct-4bit",
-            start_layer=0,
-            end_layer=7,
-            n_layers=32,
-        ),
-        inference_engine=MLXDynamicShardInferenceEngine(),
-    ),
-    Node(
-        shard=Shard(
-            model_id="mlx-community/Meta-Llama-3-8B-Instruct-4bit",
-            start_layer=8,
-            end_layer=15,
-            n_layers=32,
-        ),
-        inference_engine=MLXDynamicShardInferenceEngine(),
-    ),
-    Node(
-        shard=Shard(
-            model_id="mlx-community/Meta-Llama-3-8B-Instruct-4bit",
-            start_layer=16,
-            end_layer=23,
-            n_layers=32,
-        ),
-        inference_engine=MLXDynamicShardInferenceEngine(),
-    ),
-    Node(
-        shard=Shard(
-            model_id="mlx-community/Meta-Llama-3-8B-Instruct-4bit",
-            start_layer=24,
-            end_layer=31,
-            n_layers=32,
-        ),
-        inference_engine=MLXDynamicShardInferenceEngine(),
-    ),
-]
-
-
-async def create_generation(prompt: str, model_id: str, nodes: List[Node]):
+async def create_nodes(model_id: str, nc):
     model_path = await get_model_path(model_id)
     tokenizer = AutoTokenizer.from_pretrained(model_path)
 
+    nodes = [
+        Node(
+            model_id=model_id,
+            start_layer=0,
+            end_layer=7,
+            n_layers=32,
+            inference_engine=MLXDynamicShardInferenceEngine(),
+            nc=nc,
+        ),
+        Node(
+            model_id=model_id,
+            start_layer=8,
+            end_layer=15,
+            n_layers=32,
+            inference_engine=MLXDynamicShardInferenceEngine(),
+            nc=nc,
+        ),
+        Node(
+            model_id=model_id,
+            start_layer=16,
+            end_layer=23,
+            n_layers=32,
+            inference_engine=MLXDynamicShardInferenceEngine(),
+            nc=nc,
+        ),
+        Node(
+            model_id=model_id,
+            start_layer=24,
+            end_layer=31,
+            n_layers=32,
+            inference_engine=MLXDynamicShardInferenceEngine(),
+            nc=nc,
+        ),
+    ]
+
+    return nodes, tokenizer
+
+
+async def create_generation(prompt: str, nodes: List[Node], tokenizer: AutoTokenizer):
     prompt = build_prompt(
         tokenizer,
         [Message(role="user", content=prompt)],
     )
 
-    output_data, inference_state_full, _ = await nodes[0].inference_engine.infer_prompt(
-        shard=nodes[0].shard,
+    output_data, inference_state_full, is_finished = await nodes[0].process_prompt(
         prompt=prompt,
     )
-
-    is_finished = output_data.size == 1 and output_data.item() == tokenizer.eos_token_id
 
     result = ""
     node_index = 1
@@ -93,15 +166,10 @@ async def create_generation(prompt: str, model_id: str, nodes: List[Node]):
             (
                 output_data,
                 inference_state_full,
-                _,
-            ) = await node.inference_engine.infer_tensor(
-                shard=node.shard,
+                is_finished,
+            ) = await node.process_tensor(
                 input_data=output_data,
                 inference_state=inference_state_full,
-            )
-
-            is_finished = (
-                output_data.size == 1 and output_data.item() == tokenizer.eos_token_id
             )
 
         if is_finished:
@@ -115,10 +183,16 @@ async def create_generation(prompt: str, model_id: str, nodes: List[Node]):
 
 # An inference engine should work the same for any number of Shards, as long as the Shards are continuous.
 async def test_inference_engine():
+    nc = await connect("nats://localhost:4222")
+
+    nodes, tokzenizer = await create_nodes(
+        "mlx-community/Meta-Llama-3-8B-Instruct-4bit", nc
+    )
+
     generation = await create_generation(
         "Tell me a story about a boy named billy?",
-        "mlx-community/Meta-Llama-3-8B-Instruct-4bit",
         nodes,
+        tokzenizer,
     )
 
     print("DONE")
