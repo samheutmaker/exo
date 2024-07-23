@@ -96,7 +96,7 @@ async def main():
         loop.add_signal_handler(s, handle_exit)
 
     nodes, tokzenizer = await create_nodes(
-        "meta-llama/Meta-Llama-3.1-405B", nc
+        "meta-llama/Meta-Llama-3.1-70B", nc
     )
 
     generation = await create_generation(
