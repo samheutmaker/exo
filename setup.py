@@ -10,6 +10,7 @@ install_requires = [
     "grpcio-tools==1.64.1",
     "huggingface-hub==0.23.4",
     "Jinja2==3.1.4",
+    "nats-py==2.1.0",
     "numpy==2.0.0",
     "prometheus-client==0.20.0",
     "protobuf==5.27.1",

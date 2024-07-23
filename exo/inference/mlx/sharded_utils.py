@@ -185,7 +185,7 @@ async def get_model_path(path_or_hf_repo: str, revision: Optional[str] = None) -
     Returns:
         Path: The path to the model.
     """
-    model_path = Path("mlx-community/Meta-Llama-3-8B-Instruct-4bit")
+    model_path = Path(path_or_hf_repo)
     if not model_path.exists():
         print(f"Model path {model_path} does not exist")
         try:

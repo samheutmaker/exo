@@ -1,33 +1,15 @@
 import asyncio
-
-from dataclasses import dataclass
 import pickle
-from typing import List
+from dataclasses import dataclass
 import numpy as np
 
-from transformers import AutoTokenizer
-from nats import connect
 from nats.aio.client import Client as NATS
+from transformers import AutoTokenizer
 
 from exo.inference.inference_engine import InferenceEngine
-from exo.inference.mlx.sharded_inference_engine import MLXDynamicShardInferenceEngine
-from exo.inference.mlx.sharded_utils import get_model_path
 from exo.inference.shard import Shard
 
 STOP_SIGNAL = b"STOP"  # Use a byte string as the stop signal
-
-
-class Message:
-    def __init__(self, role: str, content: str):
-        self.role = role
-        self.content = content
-
-
-def build_prompt(tokenizer, messages: List[Message]):
-    return tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
-    )
-
 
 @dataclass
 class ForwardPassResult:
@@ -48,7 +30,7 @@ class Node:
     tokenizer: AutoTokenizer = None
 
     is_root: bool = False
-    is_leaf: bool = False
+    is_last: bool = False
     topic: str = None
     next_topic: str = None
 
@@ -58,9 +40,9 @@ class Node:
                 self.model_id, self.start_layer, self.end_layer, self.n_layers
             )
 
-        self.is_leaf = self.end_layer == self.n_layers - 1
+        self.is_last = self.end_layer == self.n_layers - 1
         self.topic = f"shard_{self.start_layer}"
-        self.next_topic = f"shard_{0 if self.is_leaf else self.end_layer + 1}"
+        self.next_topic = f"shard_{0 if self.is_last else self.end_layer + 1}"
 
         # Subscribe to the "topic" event on NATS
         asyncio.create_task(self.subscribe_to_topic())
@@ -80,7 +62,7 @@ class Node:
             await self.nc.publish(response_inbox, STOP_SIGNAL)
             return
 
-        if self.is_leaf:
+        if self.is_last:
             token = self.tokenizer.decode(next_forward_pass_result.output_data)
             token_bytes = token.encode("utf-8")
             await self.nc.publish(response_inbox, token_bytes)
@@ -148,85 +130,3 @@ class Node:
         # print("is_finished", is_finished)
 
         return ForwardPassResult(output_data, inference_state_full, is_finished)
-
-
-async def create_nodes(model_id: str, nc: NATS):
-    model_path = await get_model_path(model_id)
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-
-    nodes = [
-        Node(
-            model_id=model_id,
-            start_layer=0,
-            end_layer=7,
-            n_layers=32,
-            inference_engine=MLXDynamicShardInferenceEngine(),
-            nc=nc,
-            tokenizer=tokenizer,
-        ),
-        Node(
-            model_id=model_id,
-            start_layer=8,
-            end_layer=15,
-            n_layers=32,
-            inference_engine=MLXDynamicShardInferenceEngine(),
-            nc=nc,
-            tokenizer=tokenizer,
-        ),
-        Node(
-            model_id=model_id,
-            start_layer=16,
-            end_layer=23,
-            n_layers=32,
-            inference_engine=MLXDynamicShardInferenceEngine(),
-            nc=nc,
-            tokenizer=tokenizer,
-        ),
-        Node(
-            model_id=model_id,
-            start_layer=24,
-            end_layer=31,
-            n_layers=32,
-            inference_engine=MLXDynamicShardInferenceEngine(),
-            nc=nc,
-            tokenizer=tokenizer,
-        ),
-    ]
-
-    return nodes, tokenizer
-
-
-async def create_generation(prompt: str, nodes: List[Node], tokenizer: AutoTokenizer):
-    prompt = build_prompt(
-        tokenizer,
-        [Message(role="user", content=prompt)],
-    )
-
-    import asyncio
-
-    await asyncio.sleep(2)
-
-    return await nodes[0].process_prompt(
-        prompt=prompt,
-    )
-
-
-# An inference engine should work the same for any number of Shards, as long as the Shards are continuous.
-async def test_inference_engine():
-    nc = await connect("nats://100.84.82.82:4222")
-
-    nodes, tokzenizer = await create_nodes(
-        "mlx-community/Meta-Llama-3-8B-Instruct-4bit", nc
-    )
-
-    generation = await create_generation(
-        "Tell me a story about a boy named billy?",
-        nodes,
-        tokzenizer,
-    )
-
-    print("DONE")
-    print(generation)
-
-
-asyncio.run(test_inference_engine())
