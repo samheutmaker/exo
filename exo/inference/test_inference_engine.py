@@ -219,14 +219,14 @@ async def test_inference_engine():
         "mlx-community/Meta-Llama-3-8B-Instruct-4bit", nc
     )
 
-    generation = await create_generation(
-        "Tell me a story about a boy named billy?",
-        nodes,
-        tokzenizer,
-    )
+    # generation = await create_generation(
+    #     "Tell me a story about a boy named billy?",
+    #     nodes,
+    #     tokzenizer,
+    # )
 
-    print("DONE")
-    print(generation)
+    # print("DONE")
+    # print(generation)
 
 
 asyncio.run(test_inference_engine())
