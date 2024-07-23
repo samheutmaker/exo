@@ -1,5 +1,8 @@
 import asyncio
-from dataclasses import dataclass
+import json
+
+from dataclasses import dataclass, asdict
+import pickle
 from typing import List, Optional
 import numpy as np
 
@@ -41,7 +44,10 @@ class Node:
     inference_engine: InferenceEngine
     nc: NATS
     shard: Shard = None
+    tokenizer: AutoTokenizer = None
 
+    is_root: bool = False
+    is_leaf: bool = False
     topic: str = None
     next_topic: str = None
 
@@ -51,18 +57,35 @@ class Node:
                 self.model_id, self.start_layer, self.end_layer, self.n_layers
             )
 
+        self.is_leaf = self.end_layer == self.n_layers - 1
         self.topic = f"shard_{self.start_layer}"
-        self.next_topic = f"shard_{self.end_layer + 1}"
+        self.next_topic = f"shard_{0 if self.is_leaf else self.end_layer + 1}"
 
         # Subscribe to the "topic" event on NATS
         asyncio.create_task(self.subscribe_to_topic())
 
     async def subscribe_to_topic(self):
         await self.nc.subscribe(self.topic, cb=self.handle_topic_message)
+        print(f"Subscribed to {self.topic}")
 
     async def handle_topic_message(self, msg):
-        print(msg.data)
-        pass
+        # print(f"Received message on {msg.subject}")
+        previous_forward_pass_result = pickle.loads(msg.data)
+        next_forward_pass_result = await self.process_tensor(
+            previous_forward_pass_result
+        )
+
+        if self.is_leaf:
+            token = self.tokenizer.decode(next_forward_pass_result.output_data)
+            print("token", token)
+
+        if previous_forward_pass_result.is_finished:
+            print("DONE")
+            pass
+        else:
+            payload_bytes = pickle.dumps(next_forward_pass_result)
+            # print(f"Sending message to {self.next_topic}")
+            await self.nc.publish(self.next_topic, payload_bytes)
 
     async def process_prompt(self, prompt: str):
         (
@@ -74,36 +97,30 @@ class Node:
             prompt=prompt,
         )
 
-        return (
-            output_data,
-            inference_state_full,
-            is_finished,
-        )
+        payload = ForwardPassResult(output_data, inference_state_full, is_finished)
+        payload_bytes = pickle.dumps(payload)
 
-        # await self.nc.publish(
-        #     self.next_topic,
-        #     ForwardPassResult(output_data, inference_state_full, is_finished),
-        # )
+        # print(f"Sending message to {self.next_topic}")
+        response = await self.nc.request(self.next_topic, payload_bytes, timeout=20)
+        return pickle.loads(response.data)
 
-    async def process_tensor(self, input_data: np.ndarray, inference_state: str):
+    async def process_tensor(self, previous_forward_pass_result: ForwardPassResult):
         (
             output_data,
             inference_state_full,
             is_finished,
         ) = await self.inference_engine.infer_tensor(
             shard=self.shard,
-            input_data=input_data,
-            inference_state=inference_state,
+            input_data=previous_forward_pass_result.output_data,
+            inference_state=previous_forward_pass_result.inference_state_full,
         )
 
-        return (
-            output_data,
-            inference_state_full,
-            is_finished,
-        )
+        # print("is_finished", is_finished)
+
+        return ForwardPassResult(output_data, inference_state_full, is_finished)
 
 
-async def create_nodes(model_id: str, nc):
+async def create_nodes(model_id: str, nc: NATS):
     model_path = await get_model_path(model_id)
     tokenizer = AutoTokenizer.from_pretrained(model_path)
 
@@ -115,6 +132,7 @@ async def create_nodes(model_id: str, nc):
             n_layers=32,
             inference_engine=MLXDynamicShardInferenceEngine(),
             nc=nc,
+            tokenizer=tokenizer,
         ),
         Node(
             model_id=model_id,
@@ -123,6 +141,7 @@ async def create_nodes(model_id: str, nc):
             n_layers=32,
             inference_engine=MLXDynamicShardInferenceEngine(),
             nc=nc,
+            tokenizer=tokenizer,
         ),
         Node(
             model_id=model_id,
@@ -131,6 +150,7 @@ async def create_nodes(model_id: str, nc):
             n_layers=32,
             inference_engine=MLXDynamicShardInferenceEngine(),
             nc=nc,
+            tokenizer=tokenizer,
         ),
         Node(
             model_id=model_id,
@@ -139,6 +159,7 @@ async def create_nodes(model_id: str, nc):
             n_layers=32,
             inference_engine=MLXDynamicShardInferenceEngine(),
             nc=nc,
+            tokenizer=tokenizer,
         ),
     ]
 
@@ -151,7 +172,10 @@ async def create_generation(prompt: str, nodes: List[Node], tokenizer: AutoToken
         [Message(role="user", content=prompt)],
     )
 
-    output_data, inference_state_full, is_finished = await nodes[0].process_prompt(
+    import asyncio
+
+    await asyncio.sleep(2)
+    (output_data, inference_state_full, is_finished) = await nodes[0].process_prompt(
         prompt=prompt,
     )
 
