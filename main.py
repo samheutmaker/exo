@@ -95,9 +95,7 @@ async def main():
     for s in [signal.SIGINT, signal.SIGTERM]:
         loop.add_signal_handler(s, handle_exit)
 
-    nodes, tokzenizer = await create_nodes(
-        "meta-llama/Meta-Llama-3.1-8B", nc
-    )
+    nodes, tokzenizer = await create_nodes("context-labs/Meta-Llama-3.1-8B-4bit", nc)
 
     generation = await create_generation(
         "Tell me a story about a boy named billy?",
