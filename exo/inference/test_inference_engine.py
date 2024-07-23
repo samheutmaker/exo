@@ -219,6 +219,9 @@ async def test_inference_engine():
         "mlx-community/Meta-Llama-3-8B-Instruct-4bit", nc
     )
 
+    while True:
+        await asyncio.sleep(1)
+
     # generation = await create_generation(
     #     "Tell me a story about a boy named billy?",
     #     nodes,
