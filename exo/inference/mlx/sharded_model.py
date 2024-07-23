@@ -7,6 +7,7 @@ from mlx_lm.sample_utils import top_p_sampling
 
 from ..shard import Shard
 
+
 class StatefulShardedModel:
     def __init__(self, shard: Shard, model: nn.Module):
         self.shard = shard
@@ -38,7 +39,9 @@ class StatefulShardedModel:
 
         y = x
 
-        output = self.model(y[None] if self.shard.is_first_layer() else y, cache=self.cache)
+        output = self.model(
+            y[None] if self.shard.is_first_layer() else y, cache=self.cache
+        )
 
         if self.shard.is_last_layer():
             logits = output[:, -1, :]
@@ -48,10 +51,10 @@ class StatefulShardedModel:
             return output
 
     def __call__(
-            self,
-            x,
-            temp: float = 0.0,
-            top_p: float = 1.0,
+        self,
+        x,
+        temp: float = 0.0,
+        top_p: float = 1.0,
         logit_bias: Optional[Dict[int, float]] = None,
     ) -> Generator[Tuple[mx.array, mx.array], None, None]:
         return self.step(x, temp, top_p, logit_bias)

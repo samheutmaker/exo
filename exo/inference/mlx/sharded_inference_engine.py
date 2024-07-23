@@ -34,7 +34,6 @@ class MLXDynamicShardInferenceEngine(InferenceEngine):
         output_data: np.ndarray = np.array(
             self.stateful_sharded_model.step(mx.array(input_data))
         )
-        
         return (
             output_data,
             "",
