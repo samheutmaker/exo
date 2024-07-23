@@ -48,7 +48,7 @@ class Node:
     tokenizer: AutoTokenizer = None
 
     is_root: bool = False
-    is_leaf: bool = False
+    is_last: bool = False
     topic: str = None
     next_topic: str = None
 
@@ -58,9 +58,9 @@ class Node:
                 self.model_id, self.start_layer, self.end_layer, self.n_layers
             )
 
-        self.is_leaf = self.end_layer == self.n_layers - 1
+        self.is_last = self.end_layer == self.n_layers - 1
         self.topic = f"shard_{self.start_layer}"
-        self.next_topic = f"shard_{0 if self.is_leaf else self.end_layer + 1}"
+        self.next_topic = f"shard_{0 if self.is_last else self.end_layer + 1}"
 
         # Subscribe to the "topic" event on NATS
         asyncio.create_task(self.subscribe_to_topic())
@@ -80,7 +80,7 @@ class Node:
             await self.nc.publish(response_inbox, STOP_SIGNAL)
             return
 
-        if self.is_leaf:
+        if self.is_last:
             token = self.tokenizer.decode(next_forward_pass_result.output_data)
             token_bytes = token.encode("utf-8")
             await self.nc.publish(response_inbox, token_bytes)
