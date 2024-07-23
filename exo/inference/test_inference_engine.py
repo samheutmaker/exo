@@ -155,24 +155,24 @@ async def create_nodes(model_id: str, nc: NATS):
     tokenizer = AutoTokenizer.from_pretrained(model_path)
 
     nodes = [
-        # Node(
-        #     model_id=model_id,
-        #     start_layer=0,
-        #     end_layer=7,
-        #     n_layers=32,
-        #     inference_engine=MLXDynamicShardInferenceEngine(),
-        #     nc=nc,
-        #     tokenizer=tokenizer,
-        # ),
-        # Node(
-        #     model_id=model_id,
-        #     start_layer=8,
-        #     end_layer=15,
-        #     n_layers=32,
-        #     inference_engine=MLXDynamicShardInferenceEngine(),
-        #     nc=nc,
-        #     tokenizer=tokenizer,
-        # ),
+        Node(
+            model_id=model_id,
+            start_layer=0,
+            end_layer=7,
+            n_layers=32,
+            inference_engine=MLXDynamicShardInferenceEngine(),
+            nc=nc,
+            tokenizer=tokenizer,
+        ),
+        Node(
+            model_id=model_id,
+            start_layer=8,
+            end_layer=15,
+            n_layers=32,
+            inference_engine=MLXDynamicShardInferenceEngine(),
+            nc=nc,
+            tokenizer=tokenizer,
+        ),
         Node(
             model_id=model_id,
             start_layer=16,
@@ -182,15 +182,15 @@ async def create_nodes(model_id: str, nc: NATS):
             nc=nc,
             tokenizer=tokenizer,
         ),
-        # Node(
-        #     model_id=model_id,
-        #     start_layer=24,
-        #     end_layer=31,
-        #     n_layers=32,
-        #     inference_engine=MLXDynamicShardInferenceEngine(),
-        #     nc=nc,
-        #     tokenizer=tokenizer,
-        # ),
+        Node(
+            model_id=model_id,
+            start_layer=24,
+            end_layer=31,
+            n_layers=32,
+            inference_engine=MLXDynamicShardInferenceEngine(),
+            nc=nc,
+            tokenizer=tokenizer,
+        ),
     ]
 
     return nodes, tokenizer
@@ -219,17 +219,14 @@ async def test_inference_engine():
         "mlx-community/Meta-Llama-3-8B-Instruct-4bit", nc
     )
 
-    while True:
-        await asyncio.sleep(1)
+    generation = await create_generation(
+        "Tell me a story about a boy named billy?",
+        nodes,
+        tokzenizer,
+    )
 
-    # generation = await create_generation(
-    #     "Tell me a story about a boy named billy?",
-    #     nodes,
-    #     tokzenizer,
-    # )
-
-    # print("DONE")
-    # print(generation)
+    print("DONE")
+    print(generation)
 
 
 asyncio.run(test_inference_engine())

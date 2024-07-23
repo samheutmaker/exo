@@ -19,15 +19,18 @@ from mlx_lm.tuner.utils import apply_lora_layers
 
 from ..shard import Shard
 
+
 class ModelNotFoundError(Exception):
     def __init__(self, message):
         self.message = message
         super().__init__(self.message)
 
+
 MODEL_REMAPPING = {
     "mistral": "llama",  # mistral is compatible with llama
     "phi-msft": "phixtral",
 }
+
 
 def _get_classes(config: dict):
     """
@@ -50,6 +53,7 @@ def _get_classes(config: dict):
 
     return arch.Model, arch.ModelArgs
 
+
 def load_config(model_path: Path) -> dict:
     try:
         with open(model_path / "config.json", "r") as f:
@@ -58,6 +62,7 @@ def load_config(model_path: Path) -> dict:
         logging.error(f"Config file not found in {model_path}")
         raise
     return config
+
 
 def load_model_shard(
     model_path: Path,
@@ -93,7 +98,7 @@ def load_model_shard(
         "model_id": model_path.name,
         "start_layer": shard.start_layer,
         "end_layer": shard.end_layer,
-        "n_layers": shard.n_layers
+        "n_layers": shard.n_layers,
     }
 
     weight_files = glob.glob(str(model_path / "model*.safetensors"))
@@ -111,7 +116,14 @@ def load_model_shard(
     for wf in weight_files:
         weights_dict = mx.load(wf)
         all_weights_keys.update(weights_dict.keys())
-        weights.update({k: v for k, v in weights_dict.items() if not k.startswith("model.layers.") or shard.start_layer <= int(k.split('.')[2]) <= shard.end_layer})
+        weights.update(
+            {
+                k: v
+                for k, v in weights_dict.items()
+                if not k.startswith("model.layers.")
+                or shard.start_layer <= int(k.split(".")[2]) <= shard.end_layer
+            }
+        )
 
     model_class, model_args_class = _get_classes(config=config)
 
@@ -137,9 +149,11 @@ def load_model_shard(
     filtered_weights = {}
     for k, v in weights.items():
         if k.startswith("model.layers."):
-            layer_num = int(k.split('.')[2])
+            layer_num = int(k.split(".")[2])
             if shard.start_layer <= layer_num <= shard.end_layer:
-                new_key = f"model.layers.{layer_num - shard.start_layer}." + '.'.join(k.split('.')[3:])
+                new_key = f"model.layers.{layer_num - shard.start_layer}." + ".".join(
+                    k.split(".")[3:]
+                )
                 filtered_weights[new_key] = v
         else:
             filtered_weights[k] = v
@@ -153,9 +167,11 @@ def load_model_shard(
     model.eval()
     return model
 
+
 async def snapshot_download_async(*args, **kwargs):
     func = partial(snapshot_download, *args, **kwargs)
     return await asyncio.get_event_loop().run_in_executor(None, func)
+
 
 async def get_model_path(path_or_hf_repo: str, revision: Optional[str] = None) -> Path:
     """
@@ -169,9 +185,7 @@ async def get_model_path(path_or_hf_repo: str, revision: Optional[str] = None) -
     Returns:
         Path: The path to the model.
     """
-    model_path = Path(
-        "/Users/samheutmaker/.cache/huggingface/hub/models--mlx-community--Meta-Llama-3-8B-Instruct-4bit/snapshots/c38b3b1f03cce0ce0ccd235e5c97b0d3d255e651"
-    )
+    model_path = Path("mlx-community/Meta-Llama-3-8B-Instruct-4bit")
     if not model_path.exists():
         print(f"Model path {model_path} does not exist")
         try:
