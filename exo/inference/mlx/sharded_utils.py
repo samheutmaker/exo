@@ -92,6 +92,8 @@ def load_model_shard(
     config = load_config(model_path)
     config.update(model_config)
 
+    print(config["model_type"])
+
     # TODO hack
     config["model_type"] = f"sharded_{config['model_type']}"
     config["shard"] = {
