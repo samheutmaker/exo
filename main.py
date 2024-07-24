@@ -102,7 +102,7 @@ async def main():
             tokzenizer,
         )
 
-    print(generation)
+        print(generation)
 
     await asyncio.Event().wait()
 
