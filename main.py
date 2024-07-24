@@ -95,13 +95,12 @@ async def main():
         "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit", nc
     )
 
-    print(len(nodes))
-
-    generation = await create_generation(
-        "Tell me a story about a boy named billy?",
-        nodes,
-        tokzenizer,
-    )
+    if 1 in args.shards:
+        generation = await create_generation(
+            "Tell me a story about a boy named billy?",
+            nodes,
+            tokzenizer,
+        )
 
     print(generation)
 
