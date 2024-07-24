@@ -80,7 +80,7 @@ async def create_generation(prompt: str, nodes: List[Node], tokenizer: AutoToken
 
 
 async def main():
-    nc = await connect("nats://100.84.82.82:4222")
+    nc = await connect("nats://100.103.91.9:4222")
 
     loop = asyncio.get_running_loop()
 
