@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -32,14 +32,14 @@ class NormalModelArgs(BaseModelArgs):
             self.num_key_value_heads = self.num_attention_heads
 
         if self.rope_scaling:
-            if not "factor" in self.rope_scaling:
-                raise ValueError(f"rope_scaling must contain 'factor'")
+            if "factor" not in self.rope_scaling:
+                raise ValueError("rope_scaling must contain 'factor'")
             rope_type = self.rope_scaling.get("type") or self.rope_scaling.get(
                 "rope_type"
             )
             if rope_type is None:
                 raise ValueError(
-                    f"rope_scaling must contain either 'type' or 'rope_type'"
+                    "rope_scaling must contain either 'type' or 'rope_type'"
                 )
             if rope_type not in ["linear", "dynamic", "llama3"]:
                 raise ValueError(

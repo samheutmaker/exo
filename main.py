@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import signal
 
@@ -11,49 +12,44 @@ from exo.inference.mlx.sharded_utils import get_model_path
 from exo.network.node import Node
 from exo.api.chatgpt_api import build_prompt, Message
 
+parser = argparse.ArgumentParser(description="Initialize GRPC Discovery")
+
+parser.add_argument(
+    "--shards",
+    type=int,
+    nargs="+",
+    default=[1, 2, 3, 4],
+    help="Array of shard boundaries",
+)
+args = parser.parse_args()
+
 
 async def create_nodes(model_id: str, nc: NATS):
     model_path = await get_model_path(model_id)
     tokenizer = AutoTokenizer.from_pretrained(model_path)
 
+    shard_params = [
+        (0, 7),
+        (8, 15),
+        (16, 23),
+        (24, 31),
+    ]
+
     nodes = [
         Node(
             model_id=model_id,
-            start_layer=0,
-            end_layer=7,
+            start_layer=start_layer,
+            end_layer=end_layer,
             n_layers=32,
             inference_engine=MLXDynamicShardInferenceEngine(),
             nc=nc,
             tokenizer=tokenizer,
-        ),
-        Node(
-            model_id=model_id,
-            start_layer=8,
-            end_layer=15,
-            n_layers=32,
-            inference_engine=MLXDynamicShardInferenceEngine(),
-            nc=nc,
-            tokenizer=tokenizer,
-        ),
-        Node(
-            model_id=model_id,
-            start_layer=16,
-            end_layer=23,
-            n_layers=32,
-            inference_engine=MLXDynamicShardInferenceEngine(),
-            nc=nc,
-            tokenizer=tokenizer,
-        ),
-        Node(
-            model_id=model_id,
-            start_layer=24,
-            end_layer=31,
-            n_layers=32,
-            inference_engine=MLXDynamicShardInferenceEngine(),
-            nc=nc,
-            tokenizer=tokenizer,
-        ),
+        )
+        for i, (start_layer, end_layer) in enumerate(shard_params)
+        if i + 1 in args.shards
     ]
+
+    print("nodes.length", len(nodes))
 
     return nodes, tokenizer
 
@@ -98,6 +94,8 @@ async def main():
     nodes, tokzenizer = await create_nodes(
         "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit", nc
     )
+
+    print(len(nodes))
 
     generation = await create_generation(
         "Tell me a story about a boy named billy?",
